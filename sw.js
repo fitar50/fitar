@@ -1,11 +1,11 @@
- // ================================================================
+// ================================================================
 // SERVICE WORKER — فطار الشغل
 // Strategy:
 //   Static assets  → cache-first (serve instantly, update in bg)
-//   GAS API calls  → network-only (need live data; show offline msg on fail)
+//   GAS API calls  → network-only with timeout (need live data)
 // ================================================================
 
-const CACHE_NAME = 'fattar-v2';
+const CACHE_NAME = 'fattar-v3'; // bumped from v2 to clear old cached JS
 
 const STATIC_ASSETS = [
   './',
@@ -48,15 +48,22 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = event.request.url;
 
-  // GAS API → always network; if offline return JSON error
+  // GAS API → network-only with 15 s timeout; if offline/timeout → JSON error
   if (url.includes('script.google.com')) {
     event.respondWith(
-      fetch(event.request).catch(() =>
-        new Response(
-          JSON.stringify({ ok: false, error: 'أنت offline — تأكد من الإنترنت' }),
-          { status: 503, headers: { 'Content-Type': 'application/json' } }
-        )
-      )
+      (() => {
+        const controller = new AbortController();
+        const timeoutId  = setTimeout(() => controller.abort(), 15000);
+        return fetch(event.request, { signal: controller.signal })
+          .then(r => { clearTimeout(timeoutId); return r; })
+          .catch(() => {
+            clearTimeout(timeoutId);
+            return new Response(
+              JSON.stringify({ ok: false, error: 'أنت offline — تأكد من الإنترنت' }),
+              { status: 503, headers: { 'Content-Type': 'application/json' } }
+            );
+          });
+      })()
     );
     return;
   }

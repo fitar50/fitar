@@ -8,10 +8,21 @@ async function api(action, params = {}) {
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, typeof v === 'object' ? JSON.stringify(v) : v);
   }
-  const res = await fetch(url.toString());
-  const data = await res.json();
-  if (data.success === false && data.error) throw new Error(data.error);
-  return data;
+
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 15000); // 15 s hard cap
+
+  try {
+    const res  = await fetch(url.toString(), { signal: controller.signal });
+    clearTimeout(timeoutId);
+    const data = await res.json();
+    if (data.success === false && data.error) throw new Error(data.error);
+    return data;
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') throw new Error('انتهت مهلة الاتصال');
+    throw e;
+  }
 }
 
 async function initLoad() {
@@ -19,11 +30,11 @@ async function initLoad() {
     const [menuR, namesR, statusR, ordersR] = await Promise.all([
       api('getMenu'), api('getNames'), api('getStatus'), api('getOrders')
     ]);
-    S.menu = menuR.data;
-    S.names = namesR.data || [];
+    S.menu     = menuR.data;
+    S.names    = namesR.data   || [];
     S.isLocked = statusR.locked;
     S.lockTime = statusR.lockTime;
-    S.orders = ordersR.data || [];
+    S.orders   = ordersR.data  || [];
     buildMenuFlat();
     return true;
   } catch (e) {
