@@ -5,14 +5,14 @@
 //   GAS API calls  → network-only (need live data; show offline msg on fail)
 // ================================================================
 
-const CACHE_NAME = 'fattar-v1';
+const CACHE_NAME = 'fattar-v2';
 
 const STATIC_ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './css/style.css',
-  './js/Config.js',
+  './js/config.js',
   './js/api.js',
   './js/app.js',
   './js/manager.js',

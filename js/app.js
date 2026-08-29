@@ -16,7 +16,8 @@ const S = {
   editName: null,
   editQty: {},
   mgrRefreshTimer: null,
-  isDirty: false
+  isDirty: false,
+  _serverOrdersCount: null   // kept fresh by poll; used for accurate delivery split
 };
 
 // ================================================================
@@ -27,8 +28,10 @@ function _loKey(name) { return 'lo_' + normAr(name); }
 
 function saveLastOrder(name, items) {
   try {
-    const time = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-    localStorage.setItem(_loKey(name), JSON.stringify({ items, time }));
+    const now  = new Date();
+    const time = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    const date = now.toLocaleDateString('ar-EG', { weekday: 'long' });
+    localStorage.setItem(_loKey(name), JSON.stringify({ items, time, date }));
   } catch(e) {}
 }
 
@@ -43,7 +46,7 @@ function loadLastOrder(name) {
       item.price = mi.price;
       return true;
     });
-    return valid.length ? { items: valid } : null;
+    return valid.length ? { items: valid, date: data.date || null } : null;
   } catch(e) { return null; }
 }
 
@@ -56,9 +59,15 @@ function loadSubmitTime(name) {
   } catch(e) { return null; }
 }
 
-function showLastOrderPrompt(items) {
+function showLastOrderPrompt(items, date) {
+  // Update modal header to show how old the order is
+  const hdrEl = document.querySelector('#loModal .modal-hdr h3');
+  if (hdrEl) {
+    hdrEl.textContent = date ? `🔁 طلبك من ${date}` : '🔁 نفس طلب المرة اللي فاتت؟';
+  }
+
   const total  = items.reduce((s, i) => s + i.price * i.qty, 0);
-  const people = Math.max(S.orders.length, 1);
+  const people = Math.max(S._serverOrdersCount !== null ? S._serverOrdersCount : S.orders.length, 1);
   const del    = DELIVERY_FEE / people;
   document.getElementById('loBody').innerHTML =
     '<div style="padding:14px 16px 4px;">' +
@@ -102,6 +111,10 @@ function startUserPoll() {
         stopUserPoll();
         showToast('🔒 الطلبات اتقفلت!');
         setTimeout(() => renderClosedScreen(S.currentName), 1200);
+      }
+      // Bug #8: Keep order count fresh for accurate delivery split on submitted screen
+      if (typeof r.ordersCount === 'number') {
+        S._serverOrdersCount = r.ordersCount;
       }
     } catch (e) {
       // Silently swallow poll errors — don't disrupt the user
@@ -155,11 +168,15 @@ document.addEventListener('click', e => {
     // Name screen
     case 'proceedWithName': proceedWithName(); break;
     case 'promptEditName':  promptEditName();  break;
+    case 'saveEditName':    saveEditName();    break;
+    case 'cancelEditName':  cancelEditName();  break;
     case 'loConfirm': {
+      // Bug #10: pre-fill the order screen instead of submitting immediately
+      // so the user can review prices and make adjustments before confirming
       const _last = loadLastOrder(S.currentName);
       if (_last) _last.items.forEach(i => { S.currentQty[i.name] = i.qty; });
       closeLoModal();
-      submitOrder();
+      renderOrderScreen(S.currentName);
       break;
     }
     case 'loDecline':
@@ -267,6 +284,29 @@ function onNameSelectChange() {
   const val = document.getElementById('nameSelect').value;
   document.getElementById('newNameWrap').style.display   = val === '__new__' ? 'block' : 'none';
   document.getElementById('editNameBtn').style.display   = (val && val !== '__new__') ? 'flex' : 'none';
+  document.getElementById('editNameWrap').style.display  = 'none';  // Bug #6: collapse inline edit
+
+  // UX: show a last-order preview card inline so users see it before tapping proceed
+  const previewEl = document.getElementById('lastOrderPreview');
+  if (previewEl) {
+    if (val && val !== '__new__') {
+      const last = loadLastOrder(val);
+      if (last) {
+        const shownItems = last.items.slice(0, 3).map(i => `${h(i.name)} ×${i.qty}`).join(' · ');
+        const extra  = last.items.length > 3 ? ` (+${last.items.length - 3} أصناف)` : '';
+        const dateStr = last.date ? ` — ${last.date}` : '';
+        previewEl.innerHTML =
+          `<div class="lo-preview-label">🔁 طلبك السابق${dateStr}</div>` +
+          `<div class="lo-preview-items">${shownItems}${extra}</div>`;
+        previewEl.style.display = 'block';
+      } else {
+        previewEl.style.display = 'none';
+      }
+    } else {
+      previewEl.style.display = 'none';
+    }
+  }
+
   if (val === '__new__') setTimeout(() => document.getElementById('newNameInput').focus(), 50);
 }
 
@@ -274,64 +314,96 @@ async function proceedWithName() {
   const val = document.getElementById('nameSelect').value;
   if (!val) { showToast('اختار اسمك الأول'); return; }
 
+  // Bug #9: show loading state during API calls so user doesn't tap twice
+  const btn = document.querySelector('[data-action="proceedWithName"]');
+  setBtnLoading(btn, 'جاري التحقق');
+
   let name;
-  if (val === '__new__') {
-    name = document.getElementById('newNameInput').value.trim();
-    if (!name) { showToast('اكتب اسمك'); return; }
-    if (!S.names.some(n => normAr(n) === normAr(name))) {
+  try {
+    if (val === '__new__') {
+      name = document.getElementById('newNameInput').value.trim();
+      if (!name) { resetBtn(btn); showToast('اكتب اسمك'); return; }
+      if (!S.names.some(n => normAr(n) === normAr(name))) {
+        try {
+          await api('addName', { name });
+          S.names.push(name);
+        } catch (e) {}
+      }
+    } else {
+      name = val;
+    }
+
+    // When ordering as proxy, refresh orders to get latest state before checking
+    if (S.orderedBy) {
       try {
-        await api('addName', { name });
-        S.names.push(name);
+        const fresh = await api('getOrders');
+        S.orders = fresh.data || [];
       } catch (e) {}
     }
-  } else {
-    name = val;
+  } finally {
+    resetBtn(btn);
   }
 
-  // When ordering as proxy, refresh orders to get latest state before checking
-  if (S.orderedBy) {
-    try {
-      const fresh = await api('getOrders');
-      S.orders = fresh.data || [];
-    } catch (e) {}
-  }
-
-  S.currentName = name;
-  S.currentQty  = {};
-  S.isDirty     = false;
+  // Bug #3: do NOT set S.currentName before the proxy confirm dialog.
+  // If the user clicks "لا، إلغاء", S.currentName must stay null/previous,
+  // not polluted with the name they were about to proxy-order for.
+  S.currentQty = {};
+  S.isDirty    = false;
 
   const existing = S.orders.find(o => normAr(o.name) === normAr(name));
   if (existing) {
     if (S.orderedBy) {
-      // Proxy: confirm before overwriting someone else's order
+      // Proxy: only set S.currentName INSIDE the confirm callback
       showConfirm(`عند ${h(name)} طلب موجود — هتعدل عليه؟`, () => {
+        S.currentName = name;
         existing.items.forEach(i => { S.currentQty[i.name] = i.qty; });
         renderOrderScreen(name);
       });
       return;
     } else {
       // Returning user who already submitted — show summary so they can cancel / edit
+      S.currentName = name;
       existing.items.forEach(i => { S.currentQty[i.name] = i.qty; });
       renderSubmittedScreen();
       return;
     }
   }
 
-  // Fresh session — check if there's a previous-day order to pre-fill
-  if (!existing && !S.orderedBy) {
+  // Fresh session — set name now (no confirm needed)
+  S.currentName = name;
+
+  // Check if there's a previous-day order to pre-fill
+  if (!S.orderedBy) {
     const last = loadLastOrder(name);
-    if (last) { showLastOrderPrompt(last.items); return; }
+    if (last) { showLastOrderPrompt(last.items, last.date); return; }  // Bug #11: pass date
   }
 
   renderOrderScreen(name);
 }
 
+// Bug #6: Show inline edit field instead of blocking browser prompt()
 function promptEditName() {
   const val = document.getElementById('nameSelect').value;
   if (!val || val === '__new__') return;
-  const newName = prompt(`تعديل الاسم: "${val}"`, val);
-  if (!newName || newName.trim() === val) return;
-  doUpdateName(val, newName.trim());
+  const inp  = document.getElementById('editNameInput');
+  const wrap = document.getElementById('editNameWrap');
+  inp.value  = val;
+  wrap.style.display = 'block';
+  document.getElementById('newNameWrap').style.display = 'none';
+  setTimeout(() => inp.focus(), 50);
+}
+
+function saveEditName() {
+  const oldName = document.getElementById('nameSelect').value;
+  const newName = document.getElementById('editNameInput').value.trim();
+  document.getElementById('editNameWrap').style.display = 'none';
+  if (!newName || newName === oldName) return;
+  doUpdateName(oldName, newName);
+}
+
+function cancelEditName() {
+  document.getElementById('editNameWrap').style.display = 'none';
+  document.getElementById('editNameInput').value = '';
 }
 
 async function doUpdateName(oldName, newName) {
@@ -360,9 +432,10 @@ function handleCancelOrder(btn) {
     setBtnLoading(btn, 'جاري الإلغاء');
     try {
       await cancelOrder(S.currentName);
-      S.orders     = S.orders.filter(o => normAr(o.name) !== normAr(S.currentName));
+      S.orders      = S.orders.filter(o => normAr(o.name) !== normAr(S.currentName));
       S.currentQty  = {};
       S.isDirty     = false;
+      resetBtn(btn);       // Bug #3: must reset here too — DOM element persists in memory
       S.currentName = null;
       showToast('تم إلغاء طلبك ✓');
       setTimeout(renderNameScreen, 800);

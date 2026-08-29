@@ -20,9 +20,29 @@ function fillNameDropdown(selId, skipNew = false) {
 
 function renderNameScreen() {
   fillNameDropdown('nameSelect');
-  document.getElementById('newNameWrap').style.display = 'none';
-  document.getElementById('editNameBtn').style.display = 'none';
+  document.getElementById('newNameWrap').style.display  = 'none';
+  document.getElementById('editNameBtn').style.display  = 'none';
+  document.getElementById('editNameWrap').style.display = 'none';  // Bug #6: reset inline edit
   document.getElementById('nameSelect').value = '';
+
+  // Clear last-order preview when returning to name screen
+  const previewEl = document.getElementById('lastOrderPreview');
+  if (previewEl) previewEl.style.display = 'none';
+
+  // Bug #12: show "X من Y طلبوا" counter so users see ordering progress at a glance
+  const counterEl = document.getElementById('orderCounter');
+  if (counterEl) {
+    const orderedCount = S.orders.length;
+    const totalCount   = S.names.length;
+    if (totalCount > 0) {
+      const icon = orderedCount === totalCount ? '🎉' : '✅';
+      counterEl.textContent = `${icon} طلب ${orderedCount} من ${totalCount}`;
+      counterEl.style.display = 'block';
+    } else {
+      counterEl.style.display = 'none';
+    }
+  }
+
   const _b = document.getElementById('orderingForBanner');
   if (_b) {
     if (S.orderedBy) {
@@ -114,7 +134,13 @@ function renderSubmittedScreen() {
     .filter(([, q]) => q > 0)
     .map(([name, qty]) => ({ name, qty, price: findPrice(name) }));
   const foodTotal = items.reduce((s, i) => s + i.price * i.qty, 0);
-  const people    = S.orders.length || 1;
+  // Bug #8: use server-side count (kept fresh by poll) when available;
+  // S.orders is only fetched once at init so it can lag behind reality
+  const people    = Math.max(
+    S._serverOrdersCount !== null ? S._serverOrdersCount : S.orders.length,
+    S.orders.length,
+    1
+  );
   const delShare  = DELIVERY_FEE / people;
   const grand     = foodTotal + delShare;
 

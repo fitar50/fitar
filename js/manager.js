@@ -155,7 +155,12 @@ function renderNamesManagement() {
 // Deletes a name from the permanent list (calls deleteName action on the Apps Script).
 // NOTE: your Apps Script must handle the 'deleteName' action for this to work.
 async function doDeleteName(name, btn) {
-  showConfirm(`هتمسح "${name}" من قايمة الأسماء نهائياً؟`, async () => {
+  // Bug #5: warn manager if the person already has an order today (ghost-order risk)
+  const hasOrder = S.orders.some(o => normAr(o.name) === normAr(name));
+  const msg = hasOrder
+    ? `هتمسح "${name}" من الأسماء — طلبهم هيفضل موجود في القايمة ومش هيتمسح. تأكيد؟`
+    : `هتمسح "${name}" من قايمة الأسماء نهائياً؟`;
+  showConfirm(msg, async () => {
     const origText = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
     try {

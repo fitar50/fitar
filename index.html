@@ -39,6 +39,10 @@
     <p>اختار اسمك وابدأ الطلب</p>
   </div>
   <div id="orderingForBanner" style="display:none;margin:14px 14px 0;background:#fff3e0;color:#e65100;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:700;text-align:center;border:1.5px solid #ffcc80;"></div>
+
+  <!-- Bug #12: order progress counter -->
+  <div id="orderCounter" class="order-counter" style="display:none;"></div>
+
   <div class="name-hero">
     <span class="emoji">🧆</span>
     <h2>صباح الخير!</h2>
@@ -55,11 +59,26 @@
         </div>
         <button class="edit-name-btn" id="editNameBtn" title="تعديل الاسم" style="display:none;" data-action="promptEditName">✏️</button>
       </div>
+
+      <!-- Bug #6: inline name-edit input (replaces native browser prompt) -->
+      <div id="editNameWrap" style="display:none;margin-bottom:12px;">
+        <label class="field-label">الاسم الجديد</label>
+        <div class="edit-name-row">
+          <input type="text" id="editNameInput" maxlength="30">
+          <button class="btn btn-primary edit-name-save" data-action="saveEditName">حفظ ✓</button>
+          <button class="btn btn-outline edit-name-cancel" data-action="cancelEditName">إلغاء</button>
+        </div>
+      </div>
+
       <div id="newNameWrap">
         <label class="field-label">اكتب اسمك</label>
         <input type="text" id="newNameInput" placeholder="مثال: أحمد" maxlength="30">
       </div>
-      <button class="btn btn-primary" data-action="proceedWithName" style="margin-top:4px;">متابعة ←</button>
+
+      <!-- Last-order preview card: visible immediately on name selection -->
+      <div id="lastOrderPreview" class="lo-preview" style="display:none;"></div>
+
+      <button class="btn btn-primary" data-action="proceedWithName" style="margin-top:12px;">متابعة ←</button>
     </div>
   </div>
   <p class="hint">💡 اختار اسمك ثم اضغط ✏️ لتعديله</p>
@@ -216,8 +235,9 @@
     </div>
     <div class="modal-body" id="loBody"></div>
     <div class="modal-foot" style="display:flex;flex-direction:column;gap:10px;">
-      <button class="btn btn-primary" data-action="loConfirm" style="width:100%;">✓ نفس الطلب</button>
-      <button class="btn btn-outline" data-action="loDecline" style="width:100%;">لا، هعدل</button>
+      <!-- Bug #10: pre-fills order screen for review instead of submitting immediately -->
+      <button class="btn btn-primary" data-action="loConfirm" style="width:100%;">✓ نفس الطلب (مراجعة)</button>
+      <button class="btn btn-outline" data-action="loDecline" style="width:100%;">لا، هعدل من الأول</button>
     </div>
   </div>
 </div>
