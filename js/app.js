@@ -132,25 +132,36 @@ function stopUserPoll() {
 /* ---------- INIT ---------- */
 async function init() {
   showScreen('screen-loading');
-  const params = new URLSearchParams(window.location.search);
-  const isMgrMode = params.has(MGR_PARAM);
 
-  const ok = await initLoad();
-  if (!ok) {
+  // Failsafe: if everything hangs past 20 s for any reason, show error instead of freezing
+  const failsafe = setTimeout(() => renderErrorScreen(), 20000);
+
+  try {
+    const params   = new URLSearchParams(window.location.search);
+    const isMgrMode = params.has(MGR_PARAM);
+
+    const ok = await initLoad();
+    clearTimeout(failsafe);
+
+    if (!ok) {
+      renderErrorScreen();
+      return;
+    }
+
+    if (isMgrMode) {
+      renderManagerLogin();
+      return;
+    }
+
+    if (S.isLocked) {
+      renderClosedScreen(null);
+    } else {
+      startUserPoll();
+      renderNameScreen();
+    }
+  } catch (err) {
+    clearTimeout(failsafe);
     renderErrorScreen();
-    return;
-  }
-
-  if (isMgrMode) {
-    renderManagerLogin();
-    return;
-  }
-
-  if (S.isLocked) {
-    renderClosedScreen(null);
-  } else {
-    startUserPoll();
-    renderNameScreen();
   }
 }
 
@@ -268,7 +279,7 @@ document.addEventListener('click', e => {
     case 'saveModal':  saveModal();  break;
 
     // Error screen
-    case 'retryInit': init(); break;
+    case 'retryInit': init().catch(() => renderErrorScreen()); break;
   }
 });
 
@@ -567,5 +578,5 @@ window.addEventListener('load', () => {
     if (e.target === this) cancelConfirm();
   });
 
-  init();
+  init().catch(() => renderErrorScreen());
 });

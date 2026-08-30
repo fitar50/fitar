@@ -5,7 +5,7 @@
 //   GAS API calls  → network-only with timeout (need live data)
 // ================================================================
 
-const CACHE_NAME = 'fattar-v3'; // bumped from v2 to clear old cached JS
+const CACHE_NAME = 'fattar-v4'; // bumped from v3: fixed offline-error format bug
 
 const STATIC_ASSETS = [
   './',
@@ -59,7 +59,7 @@ self.addEventListener('fetch', event => {
           .catch(() => {
             clearTimeout(timeoutId);
             return new Response(
-              JSON.stringify({ ok: false, error: 'أنت offline — تأكد من الإنترنت' }),
+              JSON.stringify({ success: false, error: 'أنت offline — تأكد من الإنترنت' }),
               { status: 503, headers: { 'Content-Type': 'application/json' } }
             );
           });
