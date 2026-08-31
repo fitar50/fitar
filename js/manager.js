@@ -164,7 +164,7 @@ async function doDeleteName(name, btn) {
     const origText = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
     try {
-      await api('deleteName', { name });
+      await api('deleteName', { name, ref: S.mgrKey });
       S.names = S.names.filter(n => n !== name);
       showToast('تم مسح الاسم ✓');
       renderManagerDashboard();
