@@ -5,7 +5,7 @@
 //   GAS API calls  → network-only with timeout (need live data)
 // ================================================================
 
-const CACHE_NAME = 'fattar-v5'; // bumped from v3: fixed offline-error format bug
+const CACHE_NAME = 'fattar-v4'; // bumped from v3: fixed offline-error format bug
 
 const STATIC_ASSETS = [
   './',
