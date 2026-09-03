@@ -2,6 +2,6 @@
 // CONFIGURATION
 // ================================================================
 // Fill in your Apps Script URL after deploying
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbymmQbfF0cm_35OszzUyrAPtKmEhJoCkrMpiIEB-5PTZo-acyIXVG5L3UxRXkY07p0R/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwv3DSP7dBVFSRWYWqF_-eDRpcPq6bQmGegFkHb3dtsh7WlTU123tsZDVYU6N6uCDqRzg/exec';
 const MGR_PARAM  = 'backstage';
 const DELIVERY_FEE = 30;
