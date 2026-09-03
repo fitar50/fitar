@@ -1,7 +1,6 @@
 // seed.js
-// Fill in MENU and NAMES below with your actual data, then run:
+// Fill in NAMES below with your actual employee names, then run:
 //   DATABASE_URL="your-railway-postgres-url" node seed.js
-// Or set DATABASE_URL in your shell first.
 
 const { Pool } = require('pg');
 
@@ -10,26 +9,102 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// ── EDIT THESE ─────────────────────────────────────────────────
+// ── EDIT NAMES ONLY ────────────────────────────────────────────
 
-// Menu: { category, name, price, sort_order }
-// sort_order controls display order within a category (lower = shown first).
-// Items with the same sort_order fall back to insertion order.
-const MENU = [
-  { category: 'ساندوتشات', name: 'ساندوتش فول',    price: 15, sort_order: 1 },
-  { category: 'ساندوتشات', name: 'ساندوتش طعمية', price: 12, sort_order: 2 },
-  { category: 'ساندوتشات', name: 'ساندوتش بطاطس', price: 10, sort_order: 3 },
-  { category: 'مشروبات',   name: 'شاي',            price: 5,  sort_order: 1 },
-  { category: 'مشروبات',   name: 'قهوة',           price: 8,  sort_order: 2 },
-  // Add more items here...
+// Employee names — fill these in
+const NAMES = [
+  // 'أحمد',
+  // 'محمد',
+  // Add all employee names here...
 ];
 
-// Employee names
-const NAMES = [
-  'أحمد',
-  'محمد',
-  'سارة',
-  // Add all employee names here...
+// ── MENU (complete — do not edit unless prices change) ──────────
+
+const MENU = [
+  // فول
+  { category: 'فول', name: 'فول',                                   price: 15, sort_order: 1  },
+  { category: 'فول', name: 'فول دوبل',                              price: 22, sort_order: 2  },
+  { category: 'فول', name: 'فول علي بيض مسلوق',                    price: 28, sort_order: 3  },
+  { category: 'فول', name: 'فول علي بيض اومليت',                   price: 30, sort_order: 4  },
+  { category: 'فول', name: 'فول علي طعمية',                        price: 22, sort_order: 5  },
+  { category: 'فول', name: 'فول علي بطاطس صوابع',                  price: 27, sort_order: 6  },
+  { category: 'فول', name: 'فول علي بابا غانوج',                   price: 26, sort_order: 7  },
+  { category: 'فول', name: 'فول علي باذنجان',                      price: 26, sort_order: 8  },
+  { category: 'فول', name: 'فول اسكندراني',                        price: 22, sort_order: 9  },
+  { category: 'فول', name: 'فول سلطة',                             price: 22, sort_order: 10 },
+  { category: 'فول', name: 'فول زيت حار',                          price: 21, sort_order: 11 },
+  { category: 'فول', name: 'فول زيت حار بالبيض',                  price: 30, sort_order: 12 },
+  { category: 'فول', name: 'فول اسكندراني بالبيض',                 price: 30, sort_order: 13 },
+  { category: 'فول', name: 'فول زيت زيتون',                        price: 27, sort_order: 14 },
+  { category: 'فول', name: 'فول بالسجق',                           price: 29, sort_order: 15 },
+  { category: 'فول', name: 'فول بالصلصة',                          price: 27, sort_order: 16 },
+  { category: 'فول', name: 'فول بالزبدة',                          price: 27, sort_order: 17 },
+
+  // طعمية
+  { category: 'طعمية', name: 'طعمية',                                       price: 15, sort_order: 1  },
+  { category: 'طعمية', name: 'طعمية محشية',                                 price: 22, sort_order: 2  },
+  { category: 'طعمية', name: 'طعمية دوبل',                                  price: 21, sort_order: 3  },
+  { category: 'طعمية', name: 'طعمية علي باذنجان',                           price: 26, sort_order: 4  },
+  { category: 'طعمية', name: 'طعمية علي بيض مسلوق',                        price: 30, sort_order: 5  },
+  { category: 'طعمية', name: 'طعمية علي بيض اومليت',                       price: 31, sort_order: 6  },
+  { category: 'طعمية', name: 'طعمية علي جبنة قريش',                        price: 27, sort_order: 7  },
+  { category: 'طعمية', name: 'طعمية علي بابا غانوج',                       price: 26, sort_order: 8  },
+  { category: 'طعمية', name: 'طعمية محشية علي باذنجان',                    price: 29, sort_order: 9  },
+  { category: 'طعمية', name: 'طعمية بشرائح الطماطم',                       price: 25, sort_order: 10 },
+  { category: 'طعمية', name: 'طعمية بشرائح الطماطم والطحينة',              price: 26, sort_order: 11 },
+  { category: 'طعمية', name: 'طعمية بالبسطرمة',                            price: 28, sort_order: 12 },
+  { category: 'طعمية', name: 'طعمية علي الجبنة الكريمي',                   price: 33, sort_order: 13 },
+  { category: 'طعمية', name: 'طعمية علي مسقعة',                            price: 26, sort_order: 14 },
+
+  // بيض
+  { category: 'بيض', name: 'بيض مسلوق',           price: 26, sort_order: 1 },
+  { category: 'بيض', name: 'بيض مسلوق دوبل',      price: 31, sort_order: 2 },
+  { category: 'بيض', name: 'بيض اومليت',          price: 28, sort_order: 3 },
+  { category: 'بيض', name: 'بيض اومليت دوبل',     price: 38, sort_order: 4 },
+  { category: 'بيض', name: 'بيض اومليت بسطرمة',   price: 33, sort_order: 5 },
+  { category: 'بيض', name: 'بيض بسطرمة دوبل',     price: 40, sort_order: 6 },
+
+  // بطاطس
+  { category: 'بطاطس', name: 'بطاطس صوابع',                                    price: 25, sort_order: 1  },
+  { category: 'بطاطس', name: 'بطاطس صوابع علي بابا غانوج',                    price: 30, sort_order: 2  },
+  { category: 'بطاطس', name: 'بطاطس صوابع علي بيض مسلوق',                    price: 31, sort_order: 3  },
+  { category: 'بطاطس', name: 'بطاطس صوابع علي بيض اومليت',                   price: 35, sort_order: 4  },
+  { category: 'بطاطس', name: 'بطاطس صوابع علي طعمية',                        price: 28, sort_order: 5  },
+  { category: 'بطاطس', name: 'بطاطس صوابع علي طعمية محشية',                  price: 30, sort_order: 6  },
+  { category: 'بطاطس', name: 'بطاطس صوابع علي باذنجان',                      price: 28, sort_order: 7  },
+  { category: 'بطاطس', name: 'بطاطس صوابع علي مسقعة',                        price: 28, sort_order: 8  },
+  { category: 'بطاطس', name: 'بطاطس صوابع علي جبنة قريش',                   price: 28, sort_order: 9  },
+  { category: 'بطاطس', name: 'بطاطس صوابع كانشب',                            price: 28, sort_order: 10 },
+  { category: 'بطاطس', name: 'بطاطس صوابع مايونيز',                          price: 29, sort_order: 11 },
+  { category: 'بطاطس', name: 'بطاطس صوابع كانشب ومايونيز',                   price: 30, sort_order: 12 },
+  { category: 'بطاطس', name: 'بطاطس صوابع علي عجه',                          price: 30, sort_order: 13 },
+  { category: 'بطاطس', name: 'بطاطس صوابع علي بيض اومليت بسطرمة',           price: 35, sort_order: 14 },
+  { category: 'بطاطس', name: 'بطاطس بورية',                                   price: 25, sort_order: 15 },
+  { category: 'بطاطس', name: 'بطاطس بورية علي بيض مسلوق',                   price: 31, sort_order: 16 },
+  { category: 'بطاطس', name: 'بطاطس بورية علي بيض اومليت',                  price: 35, sort_order: 17 },
+  { category: 'بطاطس', name: 'بطاطس بورية علي بابا غانوج',                  price: 30, sort_order: 18 },
+  { category: 'بطاطس', name: 'بطاطس بورية علي جبنة قريش',                   price: 30, sort_order: 19 },
+  { category: 'بطاطس', name: 'بطاطس بورية مقلية بطبقة بقسماط',             price: 25, sort_order: 20 },
+  { category: 'بطاطس', name: 'بطاطس شيبسي',                                   price: 25, sort_order: 21 },
+  { category: 'بطاطس', name: 'بطاطس بانية',                                   price: 25, sort_order: 22 },
+  { category: 'بطاطس', name: 'بطاطس جمبري',                                   price: 30, sort_order: 23 },
+  { category: 'بطاطس', name: 'بطاطس صوابع بالجبنة المقلية',                  price: 43, sort_order: 24 },
+  { category: 'بطاطس', name: 'بطاطس بالجن الرومي',                            price: 39, sort_order: 25 },
+
+  // أخرى
+  { category: 'أخرى', name: 'بابا غانوج',                   price: 25, sort_order: 1  },
+  { category: 'أخرى', name: 'بابا غانوج علي بيض مسلوق',    price: 30, sort_order: 2  },
+  { category: 'أخرى', name: 'جبنة قريش',                   price: 26, sort_order: 3  },
+  { category: 'أخرى', name: 'جبنة قريش علي بيض مسلوق',    price: 29, sort_order: 4  },
+  { category: 'أخرى', name: 'جبنة مقلية',                  price: 38, sort_order: 5  },
+  { category: 'أخرى', name: 'جبنة قريش اومليت',            price: 32, sort_order: 6  },
+  { category: 'أخرى', name: 'باذنجان',                     price: 23, sort_order: 7  },
+  { category: 'أخرى', name: 'باذنجان علي بيض مسلوق',      price: 28, sort_order: 8  },
+  { category: 'أخرى', name: 'عجه',                         price: 23, sort_order: 9  },
+  { category: 'أخرى', name: 'مسقعة',                       price: 26, sort_order: 10 },
+  { category: 'أخرى', name: 'شكشوكة',                      price: 26, sort_order: 11 },
+  { category: 'أخرى', name: 'ديناميت',                     price: 35, sort_order: 12 },
+  { category: 'أخرى', name: 'ساندوتش قرنبيط',             price: 27, sort_order: 13 },
 ];
 
 // ── DO NOT EDIT BELOW THIS LINE ─────────────────────────────────
