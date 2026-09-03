@@ -10,7 +10,7 @@ async function api(action, params = {}) {
   }
 
   const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), 15000); // 15 s hard cap
+  const timeoutId  = setTimeout(() => controller.abort(), 15000);
 
   try {
     const res  = await fetch(url.toString(), { signal: controller.signal });
@@ -27,14 +27,19 @@ async function api(action, params = {}) {
 
 async function initLoad() {
   try {
-    const [menuR, namesR, statusR, ordersR] = await Promise.all([
-      api('getMenu'), api('getNames'), api('getStatus'), api('getOrders')
-    ]);
-    S.menu     = menuR.data;
-    S.names    = namesR.data   || [];
-    S.isLocked = statusR.locked;
-    S.lockTime = statusR.lockTime;
-    S.orders   = ordersR.data  || [];
+    const r = await api('getAll');
+
+    S.menu         = r.menu         || {};
+    S.names        = r.names        || [];
+    S.isLocked     = r.locked       === true;
+    S.lockTime     = r.lockTime     || '';
+    S.orderingOpen = r.orderingOpen === true;
+    S.orders       = r.orders       || [];
+
+    // Keep menu cached in sessionStorage so the manager dashboard refresh
+    // (which calls individual endpoints) can still use buildMenuFlat().
+    try { sessionStorage.setItem('fattar_menu', JSON.stringify(S.menu)); } catch(e) {}
+
     buildMenuFlat();
     return true;
   } catch (e) {
