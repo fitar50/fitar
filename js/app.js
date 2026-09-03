@@ -9,115 +9,77 @@ const S = {
   orders: [],
   isLocked: false,
   lockTime: '',
+  orderingOpen: false,       // NEW: manager controls whether ordering is open
   currentName: null,
   currentQty: {},
+  currentNotes: {},          // NEW: { [itemName]: noteText }
   mgrKey: null,
   orderedBy: null,
   editName: null,
   editQty: {},
+  editNotes: {},             // NEW: preserve per-item notes through manager edits
   mgrRefreshTimer: null,
   isDirty: false,
-  _serverOrdersCount: null   // kept fresh by poll; used for accurate delivery split
+  _serverOrdersCount: null
 };
-
-// ================================================================
-// LAST ORDER — localStorage helpers
-// Saves items + submit timestamp together under the same key.
-// ================================================================
-function _loKey(name) { return 'lo_' + normAr(name); }
-
-function saveLastOrder(name, items) {
-  try {
-    const now  = new Date();
-    const time = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-    const date = now.toLocaleDateString('ar-EG', { weekday: 'long' });
-    localStorage.setItem(_loKey(name), JSON.stringify({ items, time, date }));
-  } catch(e) {}
-}
-
-function loadLastOrder(name) {
-  try {
-    const raw = localStorage.getItem(_loKey(name));
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    const valid = (data.items || []).filter(item => {
-      const mi = S.menuFlat.find(m => m.name === item.name);
-      if (!mi) return false;
-      item.price = mi.price;
-      return true;
-    });
-    return valid.length ? { items: valid, date: data.date || null } : null;
-  } catch(e) { return null; }
-}
-
-// Returns the stored submit time string for a name, or null.
-function loadSubmitTime(name) {
-  try {
-    const raw = localStorage.getItem(_loKey(name));
-    if (!raw) return null;
-    return JSON.parse(raw).time || null;
-  } catch(e) { return null; }
-}
-
-function showLastOrderPrompt(items, date) {
-  // Update modal header to show how old the order is
-  const hdrEl = document.querySelector('#loModal .modal-hdr h3');
-  if (hdrEl) {
-    hdrEl.textContent = date ? `🔁 طلبك من ${date}` : '🔁 نفس طلب المرة اللي فاتت؟';
-  }
-
-  const total  = items.reduce((s, i) => s + i.price * i.qty, 0);
-  const people = Math.max(S._serverOrdersCount !== null ? S._serverOrdersCount : S.orders.length, 1);
-  const del    = DELIVERY_FEE / people;
-  document.getElementById('loBody').innerHTML =
-    '<div style="padding:14px 16px 4px;">' +
-    items.map(i =>
-      '<div class="summary-row"><span><span class="qty-tag">×' + i.qty + '</span>' +
-      h(i.name) + '</span><span>' + (i.price * i.qty) + ' جنيه</span></div>'
-    ).join('') +
-    '<div class="total-box" style="margin:12px 0 4px;">' +
-    '<div class="trow"><span>إجمالي الطعام</span><span>' + total + ' جنيه</span></div>' +
-    '<div class="trow" style="color:var(--grey);font-size:13px;"><span>توصيل (تقريبي)</span><span>' + del.toFixed(2) + ' جنيه</span></div>' +
-    '<div class="trow grand"><span>إجماليك المتوقع</span><span>' + (total + del).toFixed(2) + ' جنيه</span></div>' +
-    '</div></div>';
-  document.getElementById('loModal').style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-}
-
-function closeLoModal() {
-  document.getElementById('loModal').style.display = 'none';
-  document.body.style.overflow = '';
-}
 
 // ================================================================
 // USER STATUS POLL
 // Polls getStatus every 10 s on user-facing screens.
-// If the manager locks orders while a user is mid-session, they see
-// a toast immediately instead of only finding out on submit.
+// Handles: lock → show closed screen
+//          orderingOpen toggle → show/hide name screen
 // ================================================================
 let _userPollTimer = null;
 
 function startUserPoll() {
-  if (_userPollTimer || S.isLocked) return;
+  if (_userPollTimer) return;
   _userPollTimer = setInterval(async () => {
-    const active = document.querySelector('.screen.active');
+    const active   = document.querySelector('.screen.active');
     const screenId = active ? active.id : null;
-    if (!['screen-name', 'screen-order', 'screen-submitted'].includes(screenId)) return;
+    const relevant = ['screen-name', 'screen-order', 'screen-submitted', 'screen-not-open'];
+    if (!relevant.includes(screenId)) return;
+
     try {
       const r = await api('getStatus');
+
+      // Ordering just locked
       if (r.locked && !S.isLocked) {
         S.isLocked = true;
         S.lockTime = r.lockTime;
         stopUserPoll();
         showToast('🔒 الطلبات اتقفلت!');
-        setTimeout(() => renderClosedScreen(S.currentName), 1200);
+        // Refetch orders so the closed-screen total + delivery split are accurate
+        // (S.orders may be stale if others ordered after this user loaded the page).
+        api('getOrders')
+          .then(fresh => { if (fresh && fresh.data) S.orders = fresh.data; })
+          .catch(() => {})
+          .finally(() => setTimeout(() => renderClosedScreen(S.currentName), 400));
+        return;
       }
-      // Bug #8: Keep order count fresh for accurate delivery split on submitted screen
+
+      // Ordering just opened (while user is on not-open screen)
+      if (r.orderingOpen === true && !S.orderingOpen && screenId === 'screen-not-open') {
+        S.orderingOpen = true;
+        renderNameScreen();
+        return;
+      }
+
+      // Ordering just closed (while user is on name/order/submitted screen)
+      if (r.orderingOpen === false && S.orderingOpen && ['screen-name'].includes(screenId)) {
+        S.orderingOpen = false;
+        showToast('الطلبات اتقفلت مؤقتاً');
+        renderNotOpenScreen();
+        return;
+      }
+
+      S.orderingOpen = r.orderingOpen === true;
+
+      // Keep order count fresh for delivery split
       if (typeof r.ordersCount === 'number') {
         S._serverOrdersCount = r.ordersCount;
       }
     } catch (e) {
-      // Silently swallow poll errors — don't disrupt the user
+      // Silently swallow poll errors
     }
   }, 10000);
 }
@@ -133,28 +95,24 @@ function stopUserPoll() {
 async function init() {
   showScreen('screen-loading');
 
-  // Failsafe: if everything hangs past 20 s for any reason, show error instead of freezing
   const failsafe = setTimeout(() => renderErrorScreen(), 20000);
 
   try {
-    const params   = new URLSearchParams(window.location.search);
+    const params    = new URLSearchParams(window.location.search);
     const isMgrMode = params.has(MGR_PARAM);
 
     const ok = await initLoad();
     clearTimeout(failsafe);
 
-    if (!ok) {
-      renderErrorScreen();
-      return;
-    }
+    if (!ok) { renderErrorScreen(); return; }
 
-    if (isMgrMode) {
-      renderManagerLogin();
-      return;
-    }
+    if (isMgrMode) { renderManagerLogin(); return; }
 
     if (S.isLocked) {
       renderClosedScreen(null);
+    } else if (!S.orderingOpen) {
+      startUserPoll();          // poll so we notice when manager opens ordering
+      renderNotOpenScreen();
     } else {
       startUserPoll();
       renderNameScreen();
@@ -165,11 +123,26 @@ async function init() {
   }
 }
 
+/* ---------- CLICK DEBOUNCE ---------- */
+// Prevents accidental double-taps on network / destructive actions.
+// Rapid UI actions (qty steppers, expand/collapse, note toggle) are EXEMPT so
+// users can tap +/- quickly — the old global 200 ms guard swallowed those taps.
+let _lastClickTime = 0;
+const NO_DEBOUNCE = new Set(['qty', 'editQty', 'toggleNote', 'toggleCat', 'toggleOC']);
+
 /* ---------- EVENT DELEGATION ---------- */
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
+
   const action = el.dataset.action;
+
+  // 150 ms debounce for everything except the rapid-tap UI actions
+  if (!NO_DEBOUNCE.has(action)) {
+    const now = Date.now();
+    if (now - _lastClickTime < 150) { e.stopPropagation(); return; }
+    _lastClickTime = now;
+  }
 
   switch (action) {
     // Confirm sheet
@@ -181,28 +154,15 @@ document.addEventListener('click', e => {
     case 'promptEditName':  promptEditName();  break;
     case 'saveEditName':    saveEditName();    break;
     case 'cancelEditName':  cancelEditName();  break;
-    case 'loConfirm': {
-      // Bug #10: pre-fill the order screen instead of submitting immediately
-      // so the user can review prices and make adjustments before confirming
-      const _last = loadLastOrder(S.currentName);
-      if (_last) _last.items.forEach(i => { S.currentQty[i.name] = i.qty; });
-      closeLoModal();
-      renderOrderScreen(S.currentName);
-      break;
-    }
-    case 'loDecline':
-    case 'loClose':
-      closeLoModal();
-      renderOrderScreen(S.currentName);
-      break;
 
     case 'clearOrder':    clearAllItems(); break;
     case 'cancelMyOrder': handleCancelOrder(el); break;
 
     case 'goBackToName':
-      S.currentQty = {};
-      S.isDirty    = false;
-      S.orderedBy  = null;
+      S.currentQty   = {};
+      S.currentNotes = {};
+      S.isDirty      = false;
+      S.orderedBy    = null;
       renderNameScreen();
       break;
 
@@ -212,6 +172,11 @@ document.addEventListener('click', e => {
       const delta = parseInt(el.dataset.delta, 10);
       chgQty(id, delta);
       S.isDirty = true;
+      break;
+    }
+    case 'toggleNote': {
+      const id = parseInt(el.dataset.id, 10);
+      toggleNoteInput(id);
       break;
     }
     case 'toggleCat': {
@@ -232,9 +197,11 @@ document.addEventListener('click', e => {
     case 'exitManager':    exitManager();    break;
 
     // Manager dashboard
-    case 'refreshManager': refreshManagerDashboard(); break;
-    case 'doLock':  doLock();  break;
-    case 'doReset': doReset(); break;
+    case 'refreshManager':    refreshManagerDashboard(); break;
+    case 'doLock':            doLock();            break;
+    case 'doReset':           doReset();           break;
+    case 'doToggleOrdering':  doToggleOrdering();  break;
+    case 'mgrAddName':        mgrAddNewName();     break;
     case 'deleteOrder': {
       const name = el.dataset.name;
       if (name) doDeleteOrder(name, el);
@@ -290,117 +257,94 @@ document.getElementById('mgrCodeInput').addEventListener('keydown', function(e) 
   if (e.key === 'Enter') doManagerLogin();
 });
 
+// Note input listener — delegated on the menu container
+document.addEventListener('input', e => {
+  if (!e.target.matches('.note-input')) return;
+  const id   = parseInt(e.target.dataset.itemId, 10);
+  const item = S.menuFlat[id];
+  if (!item) return;
+  const val = e.target.value;  // keep spaces while typing; trim on submit
+  if (val) {
+    S.currentNotes[item.name] = val;
+    const btn = document.getElementById(`nbtn-${id}`);
+    if (btn) btn.classList.add('has-note');
+  } else {
+    delete S.currentNotes[item.name];
+    const btn = document.getElementById(`nbtn-${id}`);
+    if (btn) btn.classList.remove('has-note');
+  }
+});
+
+// mgrNewNameInput: Enter key shortcut
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.id === 'mgrNewNameInput') mgrAddNewName();
+});
+
 /* ---------- NAME SCREEN LOGIC ---------- */
 function onNameSelectChange() {
   const val = document.getElementById('nameSelect').value;
-  document.getElementById('newNameWrap').style.display   = val === '__new__' ? 'block' : 'none';
-  document.getElementById('editNameBtn').style.display   = (val && val !== '__new__') ? 'flex' : 'none';
-  document.getElementById('editNameWrap').style.display  = 'none';  // Bug #6: collapse inline edit
-
-  // UX: show a last-order preview card inline so users see it before tapping proceed
-  const previewEl = document.getElementById('lastOrderPreview');
-  if (previewEl) {
-    if (val && val !== '__new__') {
-      const last = loadLastOrder(val);
-      if (last) {
-        const shownItems = last.items.slice(0, 3).map(i => `${h(i.name)} ×${i.qty}`).join(' · ');
-        const extra  = last.items.length > 3 ? ` (+${last.items.length - 3} أصناف)` : '';
-        const dateStr = last.date ? ` — ${last.date}` : '';
-        previewEl.innerHTML =
-          `<div class="lo-preview-label">🔁 طلبك السابق${dateStr}</div>` +
-          `<div class="lo-preview-items">${shownItems}${extra}</div>`;
-        previewEl.style.display = 'block';
-      } else {
-        previewEl.style.display = 'none';
-      }
-    } else {
-      previewEl.style.display = 'none';
-    }
-  }
-
-  if (val === '__new__') setTimeout(() => document.getElementById('newNameInput').focus(), 50);
+  // Edit button: show only when an existing name is selected
+  document.getElementById('editNameBtn').style.display  = val ? 'flex' : 'none';
+  document.getElementById('editNameWrap').style.display = 'none';
 }
 
 async function proceedWithName() {
   const val = document.getElementById('nameSelect').value;
   if (!val) { showToast('اختار اسمك الأول'); return; }
 
-  // Bug #9: show loading state during API calls so user doesn't tap twice
   const btn = document.querySelector('[data-action="proceedWithName"]');
   setBtnLoading(btn, 'جاري التحقق');
 
-  let name;
-  try {
-    if (val === '__new__') {
-      name = document.getElementById('newNameInput').value.trim();
-      if (!name) { resetBtn(btn); showToast('اكتب اسمك'); return; }
-      if (!S.names.some(n => normAr(n) === normAr(name))) {
-        try {
-          await api('addName', { name });
-          S.names.push(name);
-        } catch (e) {}
-      }
-    } else {
-      name = val;
-    }
+  const name = val;
 
-    // When ordering as proxy, refresh orders to get latest state before checking
-    if (S.orderedBy) {
-      try {
-        const fresh = await api('getOrders');
-        S.orders = fresh.data || [];
-      } catch (e) {}
-    }
-  } finally {
-    resetBtn(btn);
+  // When ordering as proxy, refresh orders to get latest state
+  if (S.orderedBy) {
+    try {
+      const fresh = await api('getOrders');
+      S.orders = fresh.data || [];
+    } catch (e) {}
   }
 
-  // Bug #3: do NOT set S.currentName before the proxy confirm dialog.
-  // If the user clicks "لا، إلغاء", S.currentName must stay null/previous,
-  // not polluted with the name they were about to proxy-order for.
-  S.currentQty = {};
-  S.isDirty    = false;
+  resetBtn(btn);
+
+  S.currentQty   = {};
+  S.currentNotes = {};
+  S.isDirty      = false;
 
   const existing = S.orders.find(o => normAr(o.name) === normAr(name));
   if (existing) {
     if (S.orderedBy) {
-      // Proxy: only set S.currentName INSIDE the confirm callback
       showConfirm(`عند ${h(name)} طلب موجود — هتعدل عليه؟`, () => {
         S.currentName = name;
-        existing.items.forEach(i => { S.currentQty[i.name] = i.qty; });
+        existing.items.forEach(i => {
+          S.currentQty[i.name] = i.qty;
+          if (i.note) S.currentNotes[i.name] = i.note;
+        });
         renderOrderScreen(name);
       });
       return;
     } else {
-      // Returning user who already submitted — show summary so they can cancel / edit
       S.currentName = name;
-      existing.items.forEach(i => { S.currentQty[i.name] = i.qty; });
+      existing.items.forEach(i => {
+        S.currentQty[i.name] = i.qty;
+        if (i.note) S.currentNotes[i.name] = i.note;
+      });
       renderSubmittedScreen();
       return;
     }
   }
 
-  // Fresh session — set name now (no confirm needed)
   S.currentName = name;
-
-  // Check if there's a previous-day order to pre-fill
-  if (!S.orderedBy) {
-    const last = loadLastOrder(name);
-    if (last) { showLastOrderPrompt(last.items, last.date); return; }  // Bug #11: pass date
-  }
-
   renderOrderScreen(name);
 }
 
-// Bug #6: Show inline edit field instead of blocking browser prompt()
 function promptEditName() {
   const val = document.getElementById('nameSelect').value;
-  if (!val || val === '__new__') return;
+  if (!val) return;
   const inp  = document.getElementById('editNameInput');
   const wrap = document.getElementById('editNameWrap');
   inp.value  = val;
   wrap.style.display = 'block';
-  document.getElementById('newNameWrap').style.display = 'none';
   setTimeout(() => inp.focus(), 50);
 }
 
@@ -435,19 +379,29 @@ async function doUpdateName(oldName, newName) {
   }
 }
 
+/* ---------- NOTE TOGGLE ---------- */
+function toggleNoteInput(id) {
+  const wrap  = document.getElementById(`nwrap-${id}`);
+  const input = document.getElementById(`ninput-${id}`);
+  if (!wrap) return;
+  const isOpen = wrap.style.display === 'block';
+  wrap.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen && input) setTimeout(() => input.focus(), 60);
+}
+
 /* ---------- ORDER SCREEN LOGIC ---------- */
-// Uses showConfirm instead of browser confirm() because it hits the DB.
 function handleCancelOrder(btn) {
   if (!S.currentName) return;
   showConfirm('متأكد مش هتطلب النهارده؟ الطلب هيتمسح نهائياً', async () => {
     setBtnLoading(btn, 'جاري الإلغاء');
     try {
       await cancelOrder(S.currentName);
-      S.orders      = S.orders.filter(o => normAr(o.name) !== normAr(S.currentName));
-      S.currentQty  = {};
-      S.isDirty     = false;
-      resetBtn(btn);       // Bug #3: must reset here too — DOM element persists in memory
-      S.currentName = null;
+      S.orders       = S.orders.filter(o => normAr(o.name) !== normAr(S.currentName));
+      S.currentQty   = {};
+      S.currentNotes = {};
+      S.isDirty      = false;
+      resetBtn(btn);
+      S.currentName  = null;
       showToast('تم إلغاء طلبك ✓');
       setTimeout(renderNameScreen, 800);
     } catch (err) {
@@ -459,12 +413,19 @@ function handleCancelOrder(btn) {
 
 function clearAllItems() {
   if (!Object.keys(S.currentQty).length) return;
-  S.currentQty = {};
-  S.isDirty = false;
+  S.currentQty   = {};
+  S.currentNotes = {};
+  S.isDirty      = false;
   document.querySelectorAll('.qty-num').forEach(el => {
     el.textContent = '0';
     el.classList.remove('nonzero');
   });
+  document.querySelectorAll('.note-btn').forEach(el => {
+    el.style.display = 'none';
+    el.classList.remove('has-note');
+  });
+  document.querySelectorAll('.note-input-wrap').forEach(el => { el.style.display = ''; });
+  document.querySelectorAll('.note-input').forEach(el => { el.value = ''; });
   Object.keys(S.menu).forEach(cat => updateCatBadge(cat));
   updateTotal();
 }
@@ -473,8 +434,23 @@ function chgQty(id, delta) {
   const item = S.menuFlat[id];
   const cur  = S.currentQty[item.name] || 0;
   const next = Math.max(0, cur + delta);
-  if (next === 0) delete S.currentQty[item.name];
-  else S.currentQty[item.name] = next;
+
+  if (next === 0) {
+    delete S.currentQty[item.name];
+    // Clear note and hide note UI when item is deselected
+    delete S.currentNotes[item.name];
+    const noteBtn  = document.getElementById(`nbtn-${id}`);
+    const noteWrap = document.getElementById(`nwrap-${id}`);
+    const noteInp  = document.getElementById(`ninput-${id}`);
+    if (noteBtn)  { noteBtn.style.display = 'none'; noteBtn.classList.remove('has-note'); }
+    if (noteWrap) { noteWrap.style.display = ''; }
+    if (noteInp)  { noteInp.value = ''; }
+  } else {
+    S.currentQty[item.name] = next;
+    // Show note button when item is selected
+    const noteBtn = document.getElementById(`nbtn-${id}`);
+    if (noteBtn) noteBtn.style.display = '';
+  }
 
   const numEl = document.getElementById(`qn-${id}`);
   numEl.textContent = next;
@@ -487,7 +463,12 @@ function chgQty(id, delta) {
 async function submitOrder() {
   const items = Object.entries(S.currentQty)
     .filter(([, q]) => q > 0)
-    .map(([name, qty]) => ({ name, qty, price: findPrice(name) }));
+    .map(([name, qty]) => {
+      const obj = { name, qty, price: findPrice(name) };
+      const note = (S.currentNotes[name] || '').trim();
+      if (note) obj.note = note;
+      return obj;
+    });
 
   if (!items.length) { showToast('ما اخترتش حاجة'); return; }
 
@@ -503,7 +484,6 @@ async function submitOrder() {
     if (idx !== -1) S.orders[idx].items = items;
     else S.orders.push({ name: S.currentName, items, orderedBy: S.orderedBy || S.currentName });
 
-    saveLastOrder(S.currentName, items);   // saves items + timestamp
     S.orderedBy = null;
     S.isDirty   = false;
     resetBtn(btn);
@@ -515,6 +495,12 @@ async function submitOrder() {
       stopUserPoll();
       showToast('🔒 الطلبات اتقفلت!');
       renderClosedScreen(S.currentName);
+    } else if (e.message === 'الطلبات مش مفتوحة') {
+      // Manager paused ordering while this order was still in progress
+      S.orderingOpen = false;
+      resetBtn(btn);
+      showToast('الطلبات اتقفلت مؤقتاً');
+      renderNotOpenScreen();
     } else {
       showToast('خطأ في الإرسال — حاول تاني ❌');
       resetBtn(btn);
@@ -529,25 +515,26 @@ function editMyOrder() {
     renderClosedScreen(S.currentName);
     return;
   }
-  // FIX: don't set isDirty here — only set it when a quantity actually changes
+  // Restore notes from current order record
+  const order = S.orders.find(o => o.name === S.currentName);
+  S.currentNotes = {};
+  if (order) order.items.forEach(i => { if (i.note) S.currentNotes[i.name] = i.note; });
   renderOrderScreen(S.currentName);
 }
 
 function orderForAnother() {
-  if (S.isDirty) {
-    if (!confirm('عندك طلب مش متأكد منه — هتسيبه وتمشي؟')) return;
-  }
-  S.orderedBy   = S.currentName;
-  S.currentName = null;
-  S.currentQty  = {};
-  S.isDirty     = false;
+  S.orderedBy    = S.currentName;
+  S.currentName  = null;
+  S.currentQty   = {};
+  S.currentNotes = {};
+  S.isDirty      = false;
   renderNameScreen();
 }
 
 /* ---------- CLOSED SCREEN LOGIC ---------- */
 function lookupClosedOrder() {
   const name = document.getElementById('closedNameSelect').value;
-  if (!name || name === '__new__') return;
+  if (!name) return;
   const order = S.orders.find(o => normAr(o.name) === normAr(name));
   if (!order) { showToast('مش لاقيك في الطلبات'); return; }
   renderClosedOrder(name, order.items);
@@ -555,10 +542,7 @@ function lookupClosedOrder() {
 
 /* ---------- DIRTY ORDER WARNING ---------- */
 window.addEventListener('beforeunload', e => {
-  if (S.isDirty) {
-    e.preventDefault();
-    e.returnValue = '';
-  }
+  if (S.isDirty) { e.preventDefault(); e.returnValue = ''; }
 });
 
 // Register service worker
@@ -568,9 +552,6 @@ if ('serviceWorker' in navigator) {
 
 window.addEventListener('load', () => {
   // Modal backdrop dismissals
-  document.getElementById('loModal').addEventListener('click', function(e) {
-    if (e.target === this) { closeLoModal(); renderOrderScreen(S.currentName); }
-  });
   document.getElementById('editModal').addEventListener('click', function(e) {
     if (e.target === this) closeModal();
   });

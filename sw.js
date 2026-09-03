@@ -5,7 +5,7 @@
 //   GAS API calls  → network-only with timeout (need live data)
 // ================================================================
 
-const CACHE_NAME = 'fattar-v4'; // bumped from v3: fixed offline-error format bug
+const CACHE_NAME = 'fattar-v6'; // bumped: concurrency lock, note preservation, debounce + gate fixes
 
 const STATIC_ASSETS = [
   './',
@@ -68,7 +68,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Static assets → cache-first, then network (stale-while-revalidate style)
+  // Static assets → cache-first, then network (stale-while-revalidate)
   event.respondWith(
     caches.match(event.request).then(cached => {
       const networkFetch = fetch(event.request).then(response => {
