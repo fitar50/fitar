@@ -1,5 +1,4 @@
 // index.js
-require('dotenv').config(); // for local dev; Railway injects env vars directly
 const express = require('express');
 const cors    = require('cors');
 const db      = require('./db');
