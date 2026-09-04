@@ -10,6 +10,46 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json());
 
+// ── Auto-migrate: create tables if they don't exist ──────────────
+async function migrate() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS config (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT ''
+    )
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS names (
+      name TEXT PRIMARY KEY
+    )
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS menu (
+      id         SERIAL PRIMARY KEY,
+      category   TEXT    NOT NULL,
+      name       TEXT    NOT NULL,
+      price      INTEGER NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS orders (
+      name        TEXT        PRIMARY KEY,
+      items       JSONB       NOT NULL DEFAULT '[]',
+      ordered_by  TEXT        NOT NULL DEFAULT '',
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.query(`
+    INSERT INTO config (key, value) VALUES
+      ('locked',       'false'),
+      ('lockTime',     ''),
+      ('orderingOpen', 'false')
+    ON CONFLICT (key) DO NOTHING
+  `);
+  console.log('✓ DB migration complete');
+}
+
 // Health check
 app.get('/health', (req, res) => res.json({ ok: true }));
 
@@ -20,7 +60,6 @@ app.post('/api', async (req, res) => {
     switch (action) {
 
       case 'getAll': {
-        // Run all reads in parallel — this is the fast init call
         const [cfgRes, menuRes, namesRes, ordersRes, countRes] = await Promise.all([
           db.query("SELECT key, value FROM config"),
           db.query("SELECT category, name, price FROM menu ORDER BY sort_order, id"),
@@ -102,13 +141,11 @@ app.post('/api', async (req, res) => {
       }
 
       case 'verify': {
-        // Returns { success: false } on wrong code — does NOT throw (frontend checks res.success)
         const stored = process.env.MGR_CODE || '';
         return res.json({ success: !!(stored && String(params.ref || '') === stored) });
       }
 
       case 'submitOrder': {
-        // Block if locked or ordering not open
         const { rows: cfgRows } = await db.query(
           "SELECT key, value FROM config WHERE key IN ('locked','orderingOpen')"
         );
@@ -138,7 +175,6 @@ app.post('/api', async (req, res) => {
       }
 
       case 'cancelOrder': {
-        // Hitting a non-existent name succeeds silently — matches GAS behaviour
         const name = normAr(params.name || '');
         await db.query('DELETE FROM orders WHERE name = $1', [name]);
         return res.json({ success: true });
@@ -160,12 +196,10 @@ app.post('/api', async (req, res) => {
       }
 
       case 'updateName': {
-        // No manager auth — user-facing action (employees can rename themselves)
         const oldName = normAr(params.oldName || '');
         const newName = String(params.newName || '').trim();
         if (!oldName || !newName) throw new Error('الاسم مفيش');
         await db.query('UPDATE names SET name = $1 WHERE name = $2', [newName, oldName]);
-        // Also rename in any existing orders (both the PK and the orderedBy field)
         await db.query(
           `UPDATE orders SET
              name       = CASE WHEN name       = $2 THEN $1 ELSE name       END,
@@ -191,7 +225,6 @@ app.post('/api', async (req, res) => {
         await db.query('DELETE FROM orders');
         await db.query("UPDATE config SET value = 'false' WHERE key = 'locked'");
         await db.query("UPDATE config SET value = ''      WHERE key = 'lockTime'");
-        // orderingOpen also reset — must be re-opened manually each day
         await db.query("UPDATE config SET value = 'false' WHERE key = 'orderingOpen'");
         return res.json({ success: true });
       }
@@ -203,7 +236,6 @@ app.post('/api', async (req, res) => {
         const items = await cleanItems(db, data.items);
 
         if (items.length === 0) {
-          // Empty items = delete the order
           await db.query('DELETE FROM orders WHERE name = $1', [name]);
         } else {
           await db.query(
@@ -218,7 +250,6 @@ app.post('/api', async (req, res) => {
       }
 
       case 'mgr_delete': {
-        // Hitting a non-existent name succeeds silently — matches GAS behaviour
         checkMgr(params.ref);
         const name = normAr(params.name || '');
         await db.query('DELETE FROM orders WHERE name = $1', [name]);
@@ -240,4 +271,8 @@ app.post('/api', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`fitar backend running on port ${PORT}`));
+// Start server only after migration succeeds
+migrate()
+  .then(() => app.listen(PORT, () => console.log(`fitar backend running on port ${PORT}`)))
+  .catch(err => { console.error('Migration failed:', err.message); process.exit(1); });
+
